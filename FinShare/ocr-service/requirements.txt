@@ -1,0 +1,23 @@
+# FinShare OCR Service Dependencies
+# All FREE - no paid AI services!
+
+# Web framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+
+# Image processing
+pillow==10.2.0
+opencv-python-headless==4.9.0.80
+numpy==1.26.3
+
+# OCR (FREE!)
+pytesseract==0.3.10
+
+# Utilities
+python-dotenv==1.0.0
+pydantic==2.5.3
+
+# Optional: for async background tasks
+# celery==5.3.6
+# redis==5.0.1

@@ -1,0 +1,85 @@
+_format_version: "3.0"
+_transform: true
+
+# FinShare API Gateway Configuration
+# Routes requests to the appropriate microservices
+
+services:
+  # OCR Service
+  - name: ocr-service
+    url: http://ocr-service:8001
+    routes:
+      - name: ocr-routes
+        paths:
+          - /api/ocr
+        strip_path: true
+
+  # Auth Service (when implemented)
+  - name: auth-service
+    url: http://auth-service:3001
+    routes:
+      - name: auth-routes
+        paths:
+          - /api/auth
+        strip_path: true
+
+  # User Service (when implemented)
+  - name: user-service
+    url: http://user-service:3002
+    routes:
+      - name: user-routes
+        paths:
+          - /api/users
+        strip_path: true
+
+  # Group Service (when implemented)
+  - name: group-service
+    url: http://group-service:3003
+    routes:
+      - name: group-routes
+        paths:
+          - /api/groups
+        strip_path: true
+
+  # Expense Service (when implemented)
+  - name: expense-service
+    url: http://expense-service:3004
+    routes:
+      - name: expense-routes
+        paths:
+          - /api/expenses
+        strip_path: true
+
+  # Chat Service (when implemented)
+  - name: chat-service
+    url: http://chat-service:3005
+    routes:
+      - name: chat-routes
+        paths:
+          - /api/chat
+        strip_path: true
+
+# Plugins for rate limiting, CORS, etc.
+plugins:
+  - name: cors
+    config:
+      origins:
+        - "*"
+      methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+        - PATCH
+      headers:
+        - Accept
+        - Authorization
+        - Content-Type
+      credentials: true
+      max_age: 3600
+
+  - name: rate-limiting
+    config:
+      minute: 100
+      policy: local

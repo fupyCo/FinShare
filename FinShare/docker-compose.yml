@@ -1,0 +1,173 @@
+# FinShare Docker Compose
+# Run: docker-compose up -d
+
+services:
+  # ===========================================
+  # DATABASES
+  # ===========================================
+  
+  # PostgreSQL - Main database
+  postgres:
+    image: postgres:15-alpine
+    container_name: finshare-postgres
+    environment:
+      POSTGRES_DB: finshare
+      POSTGRES_USER: finshare
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-finshare_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infrastructure/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finshare"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - finshare-network
+
+  # MongoDB - Chat messages
+  mongodb:
+    image: mongo:6-jammy
+    container_name: finshare-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-finshare}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-finshare_dev_password}
+      MONGO_INITDB_DATABASE: finshare_chat
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - finshare-network
+
+  # Redis - Cache and sessions
+  redis:
+    image: redis:7-alpine
+    container_name: finshare-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-finshare_dev_password}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - finshare-network
+
+  # ===========================================
+  # STORAGE
+  # ===========================================
+
+  # MinIO - S3-compatible storage for receipts (FREE)
+  minio:
+    image: minio/minio:latest
+    container_name: finshare-minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-minioadmin}
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"  # API
+      - "9001:9001"  # Web console
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - finshare-network
+
+  # ===========================================
+  # DEVELOPMENT TOOLS
+  # ===========================================
+
+  # MailHog - Catch all emails in development
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: finshare-mailhog
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    networks:
+      - finshare-network
+
+  # ===========================================
+  # OCR SERVICE (Tesseract - FREE)
+  # ===========================================
+
+  ocr-service:
+    build:
+      context: ./ocr-service
+      dockerfile: Dockerfile
+    container_name: finshare-ocr
+    environment:
+      ENVIRONMENT: development
+      PORT: 8001
+      REDIS_URL: redis://:${REDIS_PASSWORD:-finshare_dev_password}@redis:6379
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_PASSWORD:-minioadmin}
+      MINIO_BUCKET: receipts
+    ports:
+      - "8001:8001"
+    depends_on:
+      - redis
+      - minio
+    networks:
+      - finshare-network
+
+  # ===========================================
+  # API GATEWAY
+  # ===========================================
+
+  api-gateway:
+    image: kong:3.5
+    container_name: finshare-api-gateway
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+    ports:
+      - "8000:8000"  # API Gateway
+      - "8443:8443"  # SSL
+    volumes:
+      - ./infrastructure/docker/kong:/kong/declarative
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - finshare-network
+
+# ===========================================
+# VOLUMES
+# ===========================================
+
+volumes:
+  postgres-data:
+  mongo-data:
+  redis-data:
+  minio-data:
+
+# ===========================================
+# NETWORKS
+# ===========================================
+
+networks:
+  finshare-network:
+    driver: bridge
